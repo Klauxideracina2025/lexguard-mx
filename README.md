@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # LexGuard MX — Guía de Despliegue
 
 ## Estructura del proyecto
@@ -87,7 +86,3 @@ Obtén la tuya en: **console.anthropic.com** → API Keys → Create Key
 
 ⚠️ Nunca compartas ni expongas tu API key en el código del frontend.
 El archivo `api/chat.js` la mantiene segura en el servidor.
-=======
-# lexguard-mx
-LexGuard MX — App gratuita de auxilio ciudadano para México. Botón SOS que notifica a tus contactos con tu ubicación GPS, llamada directa al 911 y asistente de IA entrenado en la Constitución Mexicana para guiarte durante una detención policial. React + Vite + Anthropic API.
->>>>>>> 10e3701c1dc9cb614689ea8cf87149b87f41218e

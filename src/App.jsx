@@ -271,9 +271,29 @@ export default function AuxilioCiudadano() {
     setScreen("home");
   }, [cleanupLocation]);
 
+  // [FIX-27] Contacts en ref para evitar closure stale en triggerSOS
+  const contactsRef = useRef(contacts);
+  useEffect(() => { contactsRef.current = contacts; }, [contacts]);
+
   const triggerSOS = useCallback(() => {
     setSosTriggered(true);
-    // En producción: llamar al backend con locationRef.current para enviar SMS con Maps link
+    // Usar contactsRef.current para leer el valor más reciente sin dependencia en closure
+    const validContacts = contactsRef.current.filter((c) => c.name && c.phone && isValidPhone(c.phone));
+    if (validContacts.length === 0) return;
+    fetch("/api/sos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contacts: validContacts.map((c) => ({ name: sanitizeName(c.name), phone: sanitizePhone(c.phone) })),
+        location: locationRef.current
+          ? { latitude: locationRef.current.latitude, longitude: locationRef.current.longitude }
+          : null,
+        userName: "Usuario LexGuard",
+      }),
+    })
+      .then((r) => r.json())
+      .then((d) => console.log("[LexGuard] SOS enviado:", d.message))
+      .catch((e) => console.error("[LexGuard] Error SOS:", e.message));
   }, []);
 
   // ── Chat ──────────────────────────────────────────────────────────────────────

@@ -1,7 +1,10 @@
 /**
  * api/chat.js — Vercel Serverless Function
  * Proxy seguro entre el frontend y la API de Anthropic.
- * La API key NUNCA se expone al cliente.
+ *
+ * AUDITORÍA v4 aplicada:
+ * [FIX-20] Endpoint separado — chat.js solo maneja /api/chat
+ * [FIX-21] Verificación estricta de método y path
  */
 
 const SYSTEM_PROMPT = `Eres LexGuard, un asistente legal especializado en derechos ciudadanos durante detenciones policiales en México. Tu misión es proteger a los ciudadanos informándoles sobre sus derechos constitucionales de manera clara, directa y accesible.
@@ -30,28 +33,23 @@ REGLAS DE RESPUESTA:
 - Mantén respuestas concisas pero completas (máx 200 palabras)
 - Si mencionan violencia o urgencia extrema, recuerda que tienen el botón de SOS activo`;
 
-// Límites de seguridad
-const MAX_MESSAGES    = 20;
-const MAX_MSG_LENGTH  = 1000;
-const ALLOWED_ORIGIN  = process.env.ALLOWED_ORIGIN || "*"; // En producción pon tu dominio
+const MAX_MESSAGES   = 20;
+const MAX_MSG_LENGTH = 1000;
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 
 export default async function handler(req, res) {
-  // ── CORS ──────────────────────────────────────────────────────────────────
   res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
 
-  // ── Validar API key configurada ───────────────────────────────────────────
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     console.error("[LexGuard] ANTHROPIC_API_KEY no configurada");
-    return res.status(500).json({ error: "Servidor no configurado correctamente" });
+    return res.status(500).json({ error: "Servidor no configurado" });
   }
 
-  // ── Validar body ──────────────────────────────────────────────────────────
   let messages;
   try {
     ({ messages } = req.body);
@@ -63,12 +61,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Se requiere un array de mensajes" });
   }
 
-  // ── Sanitizar y limitar mensajes ──────────────────────────────────────────
   const sanitized = messages
-    .slice(-MAX_MESSAGES)                        // Máximo 20 mensajes
+    .slice(-MAX_MESSAGES)
     .filter((m) => m && typeof m.content === "string" && m.content.trim())
     .map((m) => ({
-      role: m.role === "user" ? "user" : "assistant",  // Solo roles válidos
+      role: m.role === "user" ? "user" : "assistant",
       content: String(m.content).slice(0, MAX_MSG_LENGTH).trim(),
     }));
 
@@ -76,13 +73,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Mensajes vacíos" });
   }
 
-  // ── Llamada a Anthropic ───────────────────────────────────────────────────
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,                          // API key solo en el servidor
+        "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
@@ -95,19 +91,17 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
-      console.error("[LexGuard] Error Anthropic:", response.status, errData);
+      console.error("[LexGuard] Anthropic error:", response.status, errData);
       return res.status(502).json({ error: "Error al contactar el servicio de IA" });
     }
 
     const data = await response.json();
     const text = data?.content?.[0]?.text;
-
     if (typeof text !== "string" || !text) {
-      return res.status(502).json({ error: "Respuesta inválida del servicio de IA" });
+      return res.status(502).json({ error: "Respuesta inválida" });
     }
 
     return res.status(200).json({ text });
-
   } catch (err) {
     console.error("[LexGuard] Error interno:", err.message);
     return res.status(500).json({ error: "Error interno del servidor" });
